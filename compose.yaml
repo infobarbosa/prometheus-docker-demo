@@ -1,36 +1,56 @@
 services:
   prometheus:
     image: prom/prometheus:latest
-    container_name: prometheus
+    container_name: prometheus-demo
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.retention.time=7d"
     ports:
       - "9090:9090"
     networks:
       - prometheus-net
+    restart: unless-stopped
 
   pushgateway:
     image: prom/pushgateway:latest
-    container_name: pushgateway
+    container_name: pushgateway-demo
     ports:
       - "9091:9091"
     networks:
       - prometheus-net
+    restart: unless-stopped
+
+  pedidos-producer:
+    image: alpine:latest
+    container_name: pedidos-producer
+    volumes:
+      - ./pedidos.sh:/pedidos.sh:ro
+    environment:
+      - PUSHGATEWAY_URL=http://pushgateway:9091
+    command: sh -c "apk add --no-cache curl -q && sh /pedidos.sh"
+    depends_on:
+      - pushgateway
+    networks:
+      - prometheus-net
+    restart: unless-stopped
 
   grafana:
     image: grafana/grafana-oss:latest
-    container_name: grafana
+    container_name: grafana-demo
     ports:
       - "3000:3000"
     environment:
       - GF_SECURITY_ADMIN_USER=admin
       - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - ./grafana-datasource.yaml:/etc/grafana/provisioning/datasources/datasource.yaml
     depends_on:
       - prometheus
     networks:
       - prometheus-net
+    restart: unless-stopped
 
 networks:
   prometheus-net:
