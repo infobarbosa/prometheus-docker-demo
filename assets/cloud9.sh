@@ -2,9 +2,6 @@
 echo "### Atualizando o sistema ###"
 sudo apt update -y
 
-echo "### Instalando o pacote boto3  ###"
-pip install boto3
-
 echo "### Instalando o jq, a lightweight and flexible command-line JSON processor  ###"
 sudo apt install -y jq
 
@@ -82,12 +79,13 @@ echo "############################################################"
 echo "### Incluindo regra de acesso público ao ambiente Cloud9 ###"
 echo "############################################################"
 
-aws ec2 authorize-security-group-ingress --group-id $CLOUD9_EC2_SECURITY_GROUP_ID --protocol tcp --port 8086 --cidr 0.0.0.0/0
+aws ec2 authorize-security-group-ingress --group-id $CLOUD9_EC2_SECURITY_GROUP_ID --protocol tcp --port 9090 --cidr 0.0.0.0/0
+aws ec2 authorize-security-group-ingress --group-id $CLOUD9_EC2_SECURITY_GROUP_ID --protocol tcp --port 9091 --cidr 0.0.0.0/0
 aws ec2 authorize-security-group-ingress --group-id $CLOUD9_EC2_SECURITY_GROUP_ID --protocol tcp --port 3000 --cidr 0.0.0.0/0
 
 echo "### Regra de acesso público incluída com sucesso! ###"
 
 echo "Configurações aplicadas com sucesso!"
-echo "Acesse o ambiente Cloud9 em: http://$CLOUD9_EC2_PUBLIC_DNS:8086"
-
-
+echo "Acesse o Prometheus em:   http://$CLOUD9_EC2_PUBLIC_DNS:9090"
+echo "Acesse o Pushgateway em:  http://$CLOUD9_EC2_PUBLIC_DNS:9091"
+echo "Acesse o Grafana em:      http://$CLOUD9_EC2_PUBLIC_DNS:3000"

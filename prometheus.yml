@@ -1,16 +1,14 @@
 global:
-  scrape_interval: 5s
-  evaluation_interval: 5s
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  scrape_timeout: 10s
 
 scrape_configs:
-  # Scrape do próprio Prometheus
   - job_name: 'prometheus'
-    scrape_interval: 5s
     static_configs:
-      - targets: ['prometheus:9090']
+      - targets: ['prometheus-demo:9090']
 
-  # Scrape do Pushgateway
   - job_name: 'pushgateway'
-    scrape_interval: 5s
+    honor_labels: true
     static_configs:
-      - targets: ['pushgateway:9091']
+      - targets: ['pushgateway-demo:9091']
