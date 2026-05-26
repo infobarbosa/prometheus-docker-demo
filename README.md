@@ -181,31 +181,41 @@ Content-Type: text/plain
 
 #### Exemplo 1 — Métrica única (gauge)
 
+> O segmento `/produto/GELADEIRA/pais/BR` na URL define o **grupo** desta métrica no Pushgateway. Cada grupo é independente — um POST a um grupo não afeta os outros.
+
 ```bash
-cat <<'EOF' | curl -sf --data-binary @- http://localhost:9091/metrics/job/pedidos
+cat <<'EOF' | curl -sf --data-binary @- http://localhost:9091/metrics/job/pedidos/produto/GELADEIRA/pais/BR
 # HELP pedidos_quantidade Quantidade de itens no pedido
 # TYPE pedidos_quantidade gauge
 pedidos_quantidade{produto="GELADEIRA",pais="BR"} 1
+# HELP pedidos_preco Preco do pedido em reais
+# TYPE pedidos_preco gauge
+pedidos_preco{produto="GELADEIRA",pais="BR"} 4500
 EOF
 
 ```
 
 ---
 
-#### Exemplo 2 — Múltiplas métricas no mesmo POST
+#### Exemplo 2 — Múltiplas combinações produto/país (um POST por grupo)
 
 ```bash
-cat <<'EOF' | curl -sf --data-binary @- http://localhost:9091/metrics/job/pedidos
+cat <<'EOF' | curl -sf --data-binary @- http://localhost:9091/metrics/job/pedidos/produto/TV/pais/US
 # HELP pedidos_quantidade Quantidade de itens no pedido
 # TYPE pedidos_quantidade gauge
 pedidos_quantidade{produto="TV",pais="US"} 2
-pedidos_quantidade{produto="NOTEBOOK",pais="AU"} 1
-pedidos_quantidade{produto="GELADEIRA",pais="BR"} 3
 # HELP pedidos_preco Preco do pedido em reais
 # TYPE pedidos_preco gauge
 pedidos_preco{produto="TV",pais="US"} 5000
+EOF
+
+cat <<'EOF' | curl -sf --data-binary @- http://localhost:9091/metrics/job/pedidos/produto/NOTEBOOK/pais/AU
+# HELP pedidos_quantidade Quantidade de itens no pedido
+# TYPE pedidos_quantidade gauge
+pedidos_quantidade{produto="NOTEBOOK",pais="AU"} 1
+# HELP pedidos_preco Preco do pedido em reais
+# TYPE pedidos_preco gauge
 pedidos_preco{produto="NOTEBOOK",pais="AU"} 8000
-pedidos_preco{produto="GELADEIRA",pais="BR"} 4500
 EOF
 
 ```
@@ -295,18 +305,20 @@ pedidos_quantidade[5m]
 
 ---
 
-#### Exemplo 10 — Taxa de variação por segundo (últimos 5 minutos)
+#### Exemplo 10 — Variação do valor nos últimos 5 minutos
+
+> `delta()` retorna a diferença entre o primeiro e o último valor dentro da janela. Correto para métricas do tipo **gauge**.
 
 ```promql
-rate(pedidos_quantidade[5m])
+delta(pedidos_quantidade[5m])
 ```
 
 ---
 
-#### Exemplo 11 — Incremento total no último 1 hora
+#### Exemplo 11 — Média dos valores na última 1 hora
 
 ```promql
-increase(pedidos_quantidade[1h])
+avg_over_time(pedidos_quantidade[1h])
 ```
 
 ---
@@ -353,18 +365,18 @@ sum by (pais) (pedidos_preco)
 
 ---
 
-#### Exemplo 17 — Taxa de pedidos por produto (últimos 5 minutos)
+#### Exemplo 17 — Média de quantidade por produto nos últimos 5 minutos
 
 ```promql
-sum by (produto) (rate(pedidos_quantidade[5m]))
+avg by (produto) (avg_over_time(pedidos_quantidade[5m]))
 ```
 
 ---
 
-#### Exemplo 18 — Pedidos do Brasil nos últimos 30 minutos
+#### Exemplo 18 — Variação de quantidade do Brasil nos últimos 30 minutos
 
 ```promql
-sum by (produto) (increase(pedidos_quantidade{pais="BR"}[30m]))
+sum by (produto) (delta(pedidos_quantidade{pais="BR"}[30m]))
 ```
 
 ---

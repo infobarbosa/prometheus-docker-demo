@@ -20,12 +20,11 @@ while true; do
     quantidade=$(( (RANDOM % 10) + 1 ))
     preco=$(( (RANDOM % 9500) + 500 ))
 
-    payload=$(printf \
+    printf \
         '# HELP pedidos_quantidade Quantidade de itens no pedido\n# TYPE pedidos_quantidade gauge\npedidos_quantidade{produto="%s",pais="%s"} %d\n# HELP pedidos_preco Preco do pedido em reais\n# TYPE pedidos_preco gauge\npedidos_preco{produto="%s",pais="%s"} %d\n' \
-        "$produto" "$pais" "$quantidade" "$produto" "$pais" "$preco")
-
-    curl -sf --data-binary "$payload" \
-        "${PUSHGATEWAY_URL}/metrics/job/${JOB}" || true
+        "$produto" "$pais" "$quantidade" "$produto" "$pais" "$preco" \
+        | curl -sf --data-binary @- \
+            "${PUSHGATEWAY_URL}/metrics/job/${JOB}/produto/${produto}/pais/${pais}" || true
 
     i=$(( i + 1 ))
     if [ $(( i % 20 )) -eq 0 ]; then
