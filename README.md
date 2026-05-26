@@ -175,13 +175,13 @@ Content-Type: text/plain
 <metric_name>{<labels>} <valor>
 ```
 
-> **Nota:** As métricas enviadas ficam disponíveis no Pushgateway até serem substituídas por uma nova chamada ao mesmo job, ou explicitamente deletadas via DELETE.
+> **Nota:** As métricas enviadas ficam disponíveis no Pushgateway até serem substituídas por uma nova chamada ao mesmo grupo, ou explicitamente deletadas via DELETE.
 
 ---
 
-#### Exemplo 1 — Métrica única (gauge)
+#### Exemplo 1 — Enviando duas métricas de um pedido
 
-> O segmento `/produto/GELADEIRA/pais/BR` na URL define o **grupo** desta métrica no Pushgateway. Cada grupo é independente — um POST a um grupo não afeta os outros.
+> O segmento `/produto/GELADEIRA/pais/BR` na URL define o **grupo** desta métrica no Pushgateway. Cada grupo é independente — um POST a um grupo não afeta os demais.
 
 ```bash
 cat <<'EOF' | curl -sf --data-binary @- http://localhost:9091/metrics/job/pedidos/produto/GELADEIRA/pais/BR
@@ -197,7 +197,7 @@ EOF
 
 ---
 
-#### Exemplo 2 — Múltiplas combinações produto/país (um POST por grupo)
+#### Exemplo 2 — Enviando pedidos de múltiplas combinações produto/país
 
 ```bash
 cat <<'EOF' | curl -sf --data-binary @- http://localhost:9091/metrics/job/pedidos/produto/TV/pais/US
@@ -233,169 +233,20 @@ curl -s http://localhost:9091/metrics | grep pedidos
 
 ### 5. PromQL — Consultas básicas
 
-O Prometheus disponibiliza a linguagem de consulta **PromQL** (Prometheus Query Language). As consultas podem ser feitas pela UI web ou via HTTP API.
-
-Para os exemplos abaixo, acesse a UI do Prometheus em `http://localhost:9090` e use o campo de expressão.
+O Prometheus disponibiliza a linguagem de consulta **PromQL** através de uma API HTTP REST. O endpoint `/api/v1/query` executa uma consulta instantânea e retorna o valor atual das métricas.
 
 #### Sintaxe
 
+```bash
+curl -s -G 'http://localhost:9090/api/v1/query' \
+  --data-urlencode 'query=<expressão PromQL>'
 ```
-<metric_name>{<label_filter>[,...]}
-```
+
+A resposta é um objeto JSON com os campos `status` e `data`. O campo `data.result` contém a lista de séries retornadas, cada uma com seus `metric` (labels) e `value` (timestamp e valor).
+
+---
 
 #### Exemplo 4 — Todas as amostras da métrica
-
-```promql
-pedidos_quantidade
-```
-
----
-
-#### Exemplo 5 — Filtrar por produto
-
-```promql
-pedidos_quantidade{produto="TV"}
-```
-
----
-
-#### Exemplo 6 — Filtrar por país
-
-```promql
-pedidos_quantidade{pais="BR"}
-```
-
----
-
-#### Exemplo 7 — Filtrar por produto E país
-
-```promql
-pedidos_quantidade{produto="GELADEIRA",pais="BR"}
-```
-
----
-
-#### Exemplo 8 — Filtro por expressão regular
-
-```promql
-pedidos_quantidade{produto=~"TV|NOTEBOOK|TABLET"}
-```
-
----
-
-### 6. Especificando o período
-
-Em PromQL, o operador de intervalo `[<duração>]` seleciona um vetor de amostras dentro de uma janela de tempo relativa ao instante de avaliação.
-
-#### Sintaxe
-
-```
-<metric_name>[<duration>]
-```
-
-Onde `<duration>` segue o formato `<número><unidade>`:  `s` (segundos), `m` (minutos), `h` (horas), `d` (dias).
-
-#### Exemplo 9 — Amostras dos últimos 5 minutos
-
-```promql
-pedidos_quantidade[5m]
-```
-
-> **Atenção:** Vetores de intervalo (range vectors) não podem ser plotados diretamente como gráfico — são usados como entrada para funções como `rate()` e `increase()`.
-
----
-
-#### Exemplo 10 — Variação do valor nos últimos 5 minutos
-
-> `delta()` retorna a diferença entre o primeiro e o último valor dentro da janela. Correto para métricas do tipo **gauge**.
-
-```promql
-delta(pedidos_quantidade[5m])
-```
-
----
-
-#### Exemplo 11 — Média dos valores na última 1 hora
-
-```promql
-avg_over_time(pedidos_quantidade[1h])
-```
-
----
-
-### 7. Agregações PromQL
-
-#### Exemplo 12 — Total de pedidos por produto
-
-```promql
-sum by (produto) (pedidos_quantidade)
-```
-
----
-
-#### Exemplo 13 — Total de pedidos por produto e país
-
-```promql
-sum by (produto, pais) (pedidos_quantidade)
-```
-
----
-
-#### Exemplo 14 — Top 3 produtos com maior quantidade
-
-```promql
-topk(3, sum by (produto) (pedidos_quantidade))
-```
-
----
-
-#### Exemplo 15 — Média de preço por produto
-
-```promql
-avg by (produto) (pedidos_preco)
-```
-
----
-
-#### Exemplo 16 — Total de receita por país
-
-```promql
-sum by (pais) (pedidos_preco)
-```
-
----
-
-#### Exemplo 17 — Média de quantidade por produto nos últimos 5 minutos
-
-```promql
-avg by (produto) (avg_over_time(pedidos_quantidade[5m]))
-```
-
----
-
-#### Exemplo 18 — Variação de quantidade do Brasil nos últimos 30 minutos
-
-```promql
-sum by (produto) (delta(pedidos_quantidade{pais="BR"}[30m]))
-```
-
----
-
-## HTTP API do Prometheus
-
-O Prometheus disponibiliza uma API HTTP REST em `/api/v1/` para consultas programáticas.
-
-### Consulta instantânea (`/api/v1/query`)
-
-Retorna o valor das métricas no instante atual (ou em um instante específico via `time=`).
-
-#### Sintaxe
-
-```
-GET /api/v1/query?query=<promql>&[time=<timestamp>]
-```
-
-#### Exemplo 19 — Todas as amostras de pedidos_quantidade
 
 ```bash
 curl -s -G 'http://localhost:9090/api/v1/query' \
@@ -405,7 +256,91 @@ curl -s -G 'http://localhost:9090/api/v1/query' \
 
 ---
 
-#### Exemplo 20 — Soma de pedidos por produto
+#### Exemplo 5 — Filtrar por produto
+
+```bash
+curl -s -G 'http://localhost:9090/api/v1/query' \
+  --data-urlencode 'query=pedidos_quantidade{produto="TV"}'
+
+```
+
+---
+
+#### Exemplo 6 — Filtrar por país
+
+```bash
+curl -s -G 'http://localhost:9090/api/v1/query' \
+  --data-urlencode 'query=pedidos_quantidade{pais="BR"}'
+
+```
+
+---
+
+#### Exemplo 7 — Filtrar por produto E país
+
+```bash
+curl -s -G 'http://localhost:9090/api/v1/query' \
+  --data-urlencode 'query=pedidos_quantidade{produto="GELADEIRA",pais="BR"}'
+
+```
+
+---
+
+#### Exemplo 8 — Filtro por expressão regular
+
+```bash
+curl -s -G 'http://localhost:9090/api/v1/query' \
+  --data-urlencode 'query=pedidos_quantidade{produto=~"TV|NOTEBOOK|TABLET"}'
+
+```
+
+---
+
+### 6. Especificando o período
+
+Em PromQL, o operador de intervalo `[<duração>]` seleciona um vetor de amostras dentro de uma janela de tempo relativa ao instante de avaliação.
+
+Onde `<duration>` segue o formato `<número><unidade>`: `s` (segundos), `m` (minutos), `h` (horas), `d` (dias).
+
+> **Atenção:** Vetores de intervalo (range vectors) retornam tipo `matrix` e não podem ser avaliados sozinhos como resultado final — são usados como entrada para funções como `delta()` e `avg_over_time()`.
+
+---
+
+#### Exemplo 9 — Amostras dos últimos 5 minutos (range vector)
+
+```bash
+curl -s -G 'http://localhost:9090/api/v1/query' \
+  --data-urlencode 'query=pedidos_quantidade[5m]'
+
+```
+
+---
+
+#### Exemplo 10 — Variação do valor nos últimos 5 minutos
+
+> `delta()` retorna a diferença entre o primeiro e o último valor dentro da janela. Correto para métricas do tipo **gauge**.
+
+```bash
+curl -s -G 'http://localhost:9090/api/v1/query' \
+  --data-urlencode 'query=delta(pedidos_quantidade[5m])'
+
+```
+
+---
+
+#### Exemplo 11 — Média dos valores na última 1 hora
+
+```bash
+curl -s -G 'http://localhost:9090/api/v1/query' \
+  --data-urlencode 'query=avg_over_time(pedidos_quantidade[1h])'
+
+```
+
+---
+
+### 7. Agregações PromQL
+
+#### Exemplo 12 — Total de pedidos por produto
 
 ```bash
 curl -s -G 'http://localhost:9090/api/v1/query' \
@@ -415,7 +350,17 @@ curl -s -G 'http://localhost:9090/api/v1/query' \
 
 ---
 
-#### Exemplo 21 — Top 3 produtos
+#### Exemplo 13 — Total de pedidos por produto e país
+
+```bash
+curl -s -G 'http://localhost:9090/api/v1/query' \
+  --data-urlencode 'query=sum by (produto, pais) (pedidos_quantidade)'
+
+```
+
+---
+
+#### Exemplo 14 — Top 3 produtos com maior quantidade
 
 ```bash
 curl -s -G 'http://localhost:9090/api/v1/query' \
@@ -425,21 +370,70 @@ curl -s -G 'http://localhost:9090/api/v1/query' \
 
 ---
 
-### Consulta por intervalo (`/api/v1/query_range`)
+#### Exemplo 15 — Média de preço por produto
 
-Retorna uma série de pontos para plotar gráficos.
+```bash
+curl -s -G 'http://localhost:9090/api/v1/query' \
+  --data-urlencode 'query=avg by (produto) (pedidos_preco)'
+
+```
+
+---
+
+#### Exemplo 16 — Total de receita por país
+
+```bash
+curl -s -G 'http://localhost:9090/api/v1/query' \
+  --data-urlencode 'query=sum by (pais) (pedidos_preco)'
+
+```
+
+---
+
+#### Exemplo 17 — Média de quantidade por produto nos últimos 5 minutos
+
+```bash
+curl -s -G 'http://localhost:9090/api/v1/query' \
+  --data-urlencode 'query=avg by (produto) (avg_over_time(pedidos_quantidade[5m]))'
+
+```
+
+---
+
+#### Exemplo 18 — Variação de quantidade do Brasil nos últimos 30 minutos
+
+```bash
+curl -s -G 'http://localhost:9090/api/v1/query' \
+  --data-urlencode 'query=sum by (produto) (delta(pedidos_quantidade{pais="BR"}[30m]))'
+
+```
+
+---
+
+### 8. Consulta por intervalo (`/api/v1/query_range`)
+
+O endpoint `/api/v1/query_range` retorna uma série de pontos ao longo de um intervalo de tempo, ideal para analisar a evolução de métricas.
 
 #### Sintaxe
 
-```
-GET /api/v1/query_range?query=<promql>&start=<ts>&end=<ts>&step=<duration>
+```bash
+curl -s -G 'http://localhost:9090/api/v1/query_range' \
+  --data-urlencode 'query=<expressão PromQL>' \
+  --data-urlencode 'start=<timestamp_unix>' \
+  --data-urlencode 'end=<timestamp_unix>' \
+  --data-urlencode 'step=<segundos>'
 ```
 
-#### Exemplo 22 — Taxa de pedidos nos últimos 30 minutos (resolução de 1 minuto)
+- `start` e `end`: timestamps Unix em segundos delimitando o intervalo.
+- `step`: resolução em segundos entre cada ponto retornado.
+
+---
+
+#### Exemplo 19 — Média de quantidade por produto nos últimos 30 minutos (resolução de 1 minuto)
 
 ```bash
 curl -s -G 'http://localhost:9090/api/v1/query_range' \
-  --data-urlencode 'query=sum by (produto) (rate(pedidos_quantidade[5m]))' \
+  --data-urlencode 'query=avg by (produto) (avg_over_time(pedidos_quantidade[5m]))' \
   --data-urlencode "start=$(date -u -d '30 minutes ago' +%s)" \
   --data-urlencode "end=$(date -u +%s)" \
   --data-urlencode 'step=60'
@@ -448,33 +442,29 @@ curl -s -G 'http://localhost:9090/api/v1/query_range' \
 
 ---
 
-## Prometheus UI
+### 9. Verificando o status dos targets
 
-O Prometheus disponibiliza uma interface web de exploração de dados e gráficos.
+O Prometheus expõe o estado dos seus targets (alvos de scrape) via API.
 
-### Acessando a Prometheus UI
+#### Exemplo 20 — Listar todos os targets e seus estados
 
-- Abra o navegador e acesse `http://localhost:9090` (ou o endereço do ambiente Cloud9).
-- A interface não exige login (laboratório sem autenticação).
+```bash
+curl -s http://localhost:9090/api/v1/targets | python3 -m json.tool
 
-### Graph
-
-- Acesse a aba **Graph**.
-- No campo de expressão, insira uma query PromQL e clique em **Execute**.
-- Alterne entre as abas **Table** (valores pontuais) e **Graph** (série temporal).
-
-```promql
-sum by (produto) (pedidos_quantidade)
 ```
 
-```promql
-sum by (pais) (rate(pedidos_quantidade[5m]))
+#### Exemplo 21 — Verificar se todos os targets estão UP
+
+```bash
+curl -s http://localhost:9090/api/v1/targets \
+  | python3 -c "
+import json, sys
+data = json.load(sys.stdin)
+for t in data['data']['activeTargets']:
+    print(t['labels'].get('job'), '-', t['health'])
+"
+
 ```
-
-### Status dos Targets
-
-- Acesse **Status > Targets** para verificar se o Prometheus está fazendo scrape corretamente do Pushgateway.
-- O target `pushgateway` deve aparecer com estado **UP**.
 
 ---
 
@@ -519,8 +509,8 @@ topk(3, sum by (produto) (pedidos_quantidade))
 ```
 
 ```promql
-# Taxa de pedidos por produto (por segundo)
-sum by (produto) (rate(pedidos_quantidade[5m]))
+# Média de quantidade por produto (últimos 5 minutos)
+avg by (produto) (avg_over_time(pedidos_quantidade[5m]))
 ```
 
 ---
