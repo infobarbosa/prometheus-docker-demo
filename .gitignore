@@ -1,0 +1,9 @@
+nohup.out
+
+# Segredos e certificados não devem ser versionados
+*.key
+*.crt
+*.pem
+
+# Cópias locais de dados do TSDB feitas durante o hands-on
+tsdb-backup/
