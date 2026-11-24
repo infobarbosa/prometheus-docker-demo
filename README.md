@@ -312,8 +312,8 @@ promtool query instant http://localhost:9090 'fechamento_pedidos_auditados'
 
 Output esperado:
 ```text
-fechamento_pedidos_auditados{instance="", job="fechamento_diario", pais="BR"} => 1250 @[...]
-fechamento_pedidos_auditados{instance="", job="fechamento_diario", pais="US"} => 980 @[...]
+fechamento_pedidos_auditados{job="fechamento_diario", pais="BR"} => 1250 @[...]
+fechamento_pedidos_auditados{job="fechamento_diario", pais="US"} => 980 @[...]
 ```
 
 > Repare que o label `job="fechamento_diario"` foi preservado (em vez de ser sobrescrito por `job="pushgateway"`) graças à diretiva `honor_labels: true` no `prometheus.yml`.
@@ -711,7 +711,7 @@ echo "Amostras: ${SAMPLES} | Tamanho dos chunks: ${CHUNK_BYTES} bytes"
 awk "BEGIN { printf \"Custo medio: %.2f bytes/amostra\n\", ${CHUNK_BYTES} / ${SAMPLES} }"
 ```
 
-> 💡 **Desafio (para casa):** deixe o laboratório rodando por 5 a 10 minutos, gere um novo snapshot (`Seção 9.3`) e repita o cálculo acima. Observe o custo médio cair de ~3–4 bytes/amostra (com poucos segundos de dados, onde pesa o cabeçalho de cada chunk) para **menos de 2 bytes/amostra** — contra ~80 bytes da mesma linha em texto no Exposition Format! Compare essa técnica (*delta-of-delta + XOR* por série no TSDB) com a compressão colunar **Parquet + ZSTD + RLE_DICTIONARY** do laboratório de InfluxDB 3.
+> 💡 **Desafio (para casa):** deixe o laboratório rodando por 5 a 10 minutos, gere um novo snapshot (`Seção 9.3`) e repita o cálculo acima. Observe o custo médio cair de ~3–6 bytes/amostra (com poucos segundos de dados, onde pesa o cabeçalho de cada chunk) para **menos de 2 bytes/amostra** — contra ~80 bytes da mesma linha em texto no Exposition Format! Compare essa técnica (*delta-of-delta + XOR* por série no TSDB) com a compressão colunar **Parquet + ZSTD + RLE_DICTIONARY** do laboratório de InfluxDB 3.
 
 ---
 
@@ -750,9 +750,9 @@ O endpoint `/api/v1/query_range` avalia a expressão PromQL em múltiplos pontos
 ```bash
 curl -s -G 'http://localhost:9090/api/v1/query_range' \
   --data-urlencode 'query=sum by (pais) (rate(pedidos_total[1m])) * 60' \
-  --data-urlencode "start=$(date -u -d '10 minutes ago' +%s)" \
+  --data-urlencode "start=$(date -u -d '5 minutes ago' +%s)" \
   --data-urlencode "end=$(date -u +%s)" \
-  --data-urlencode 'step=60' \
+  --data-urlencode 'step=30' \
   | jq '.data.result[] | {pais: .metric.pais, pontos: (.values | length), ultimo: .values[-1]}'
 ```
 
@@ -782,29 +782,36 @@ O Grafana é uma plataforma open source de visualização amplamente usada com o
 ### Acessando o Grafana
 
 - Abra o navegador e acesse `http://<IP-PUBLICO>:3000` (o mesmo IP da IDE, exibido ao final do `launch-lab.sh`).
-- Usuário: `admin` | Senha: `admin`.
+- Usuário: `admin` | Senha: `admin` (se aparecer a tela solicitando troca de senha no primeiro acesso, clique em **Skip**).
 
 ### Datasource já configurado
 
 O datasource **Prometheus** já foi provisionado automaticamente na subida do container — o `launch-lab.sh` entrega ao Grafana uma configuração equivalente ao [`grafana-datasource.yaml`](grafana-datasource.yaml) deste repositório, apontando para `http://prometheus-lab:9090` pela rede Docker interna.
 
-Para confirmar, acesse **Connections > Data Sources > Prometheus** e clique em **Save & test**: você verá a mensagem de sucesso (`Successfully queried the Prometheus API`).
+Para confirmar, acesse **Connections > Data sources > Prometheus** e clique em **Save & test**: você verá a mensagem de sucesso (`Successfully queried the Prometheus API.`).
 
 ### Criando o primeiro painel — Pedidos por minuto por produto
 
 1. No menu lateral esquerdo, clique em **Dashboards**.
-2. Clique em **+ Create dashboard** e depois em **Add visualization**.
-3. Selecione o datasource **Prometheus**.
-4. No painel direito, em **Panel options > Title**, escreva `Pedidos por Minuto (por Produto)`.
-5. Na aba **Queries** (parte inferior), clique em **Code** no canto superior direito do editor de query.
-6. Cole a expressão PromQL abaixo:
+2. Clique em **+ Create dashboard**.
+3. No menu lateral direito, na seção **Panel**, clique em **+**.
+4. No menu lateral direito, no campo **Title**, escreva `Pedidos por Minuto (por Produto)`.
+5. Para configurar o novo painel você pode:
+   - a. Clicar no botão azul **Configure visualization**, ou
+   - b. Clicar no botão **Edit visualization** acima de **Title**.
+6. A tela agora está dividida em:
+   - parte superior: o preview do painel
+   - parte inferior: as abas **Queries** e **Transformations** (mantenha **Queries** ativa).
+7. Em **Data source**, mantenha **Prometheus**.
+8. No canto superior direito do editor de query, clique em **Code** (para alternar do modo *Builder* para o editor PromQL).
+9. Cole a expressão PromQL abaixo:
    ```promql
    sum by (produto) (rate(pedidos_total[$__rate_interval])) * 60
    ```
-7. Expanda **Options** logo abaixo do editor de código e, em **Legend**, selecione **Custom** e escreva `{{produto}}`.
-8. Clique em **Run queries**.
-9. No seletor de período (canto superior direito), escolha **Last 15 minutes** (e ative o auto-refresh para `5s` se quiser acompanhar em tempo real).
-10. Clique em **Save dashboard** e depois em **Back to dashboard**.
+10. Expanda **Options** logo abaixo do editor de código, mude **Legend** para **Custom** e escreva `{{produto}}`.
+11. Clique em **Run queries**.
+12. No topo à direita, abra o seletor de período e escolha **Last 15 minutes** (opcionalmente ative o auto-refresh para `5s`).
+13. No topo à direita, clique em **Save dashboard** e depois em **Back to dashboard**.
 
 > 💡 **O que é `$__rate_interval`?** É uma variável automática do Grafana calculada como `max(intervalo_do_passo, 4 × scrape_interval)`. Ela garante que a janela passada ao `rate()` sempre contenha amostras suficientes mesmo quando você dá zoom (5 minutos) ou afasta o gráfico (7 dias) — evitando buracos silenciosos que ocorrem ao fixar `[1m]` em gráficos longos.
 
