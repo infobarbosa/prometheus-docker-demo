@@ -788,43 +788,52 @@ O Grafana é uma plataforma open source de visualização amplamente usada com o
 
 O datasource **Prometheus** já foi provisionado automaticamente na subida do container — o `launch-lab.sh` entrega ao Grafana uma configuração equivalente ao [`grafana-datasource.yaml`](grafana-datasource.yaml) deste repositório, apontando para `http://prometheus-lab:9090` pela rede Docker interna.
 
-Para confirmar, acesse **Connections > Data sources > Prometheus** e clique em **Save & test**: você verá a mensagem de sucesso (`Successfully queried the Prometheus API.`).
+Para confirmar, acesse **Connections > Data sources > Prometheus**, role até o final da página e clique em **Test**: você verá o aviso verde `Successfully queried the Prometheus API.`.
+
+![Datasource Prometheus testado com sucesso no Grafana 13](images/grafana-01-datasource.png)
 
 ### Criando o primeiro painel — Pedidos por minuto por produto
 
-1. No menu lateral esquerdo, clique em **Dashboards**.
-2. Clique em **+ Create dashboard**.
-3. No menu lateral direito, na seção **Panel**, clique em **+**.
-4. No menu lateral direito, no campo **Title**, escreva `Pedidos por Minuto (por Produto)`.
-5. Para configurar o novo painel você pode:
-   - a. Clicar no botão azul **Configure visualization**, ou
-   - b. Clicar no botão **Edit visualization** acima de **Title**.
-6. A tela agora está dividida em:
-   - parte superior: o preview do painel
+1. No menu lateral esquerdo, clique em **Dashboards** e depois em **New > New dashboard** (ou **+ Create dashboard**).
+2. No menu lateral direito (**Add**), na seção **Panel**, clique no **`+`**.
+3. No menu lateral direito, no campo **Title**, escreva `Pedidos por Minuto (por Produto)`.
+4. Para abrir o editor do painel, clique no botão azul **Configure visualization** no centro do painel (ou em **Configure** acima de **Title**).
+
+![Novo painel criado no Grafana 13 com título preenchido](images/grafana-02-novo-painel.png)
+
+5. A tela agora está dividida em:
+   - parte superior: o preview do gráfico;
    - parte inferior: as abas **Queries** e **Transformations** (mantenha **Queries** ativa).
-7. Em **Data source**, mantenha **Prometheus**.
-8. No canto superior direito do editor de query, clique em **Code** (para alternar do modo *Builder* para o editor PromQL).
-9. Cole a expressão PromQL abaixo:
+6. Em **Data source**, mantenha **Prometheus**.
+7. No canto superior direito do editor de query, clique em **Code** (para alternar de *Builder* para o editor PromQL).
+8. Cole a expressão PromQL abaixo e clique em **Run queries**:
    ```promql
    sum by (produto) (rate(pedidos_total[$__rate_interval])) * 60
    ```
-10. Expanda **Options** logo abaixo do editor de código, mude **Legend** para **Custom** e escreva `{{produto}}`.
-11. Clique em **Run queries**.
-12. No topo à direita, abra o seletor de período e escolha **Last 15 minutes** (opcionalmente ative o auto-refresh para `5s`).
-13. No topo à direita, clique em **Save dashboard** e depois em **Back to dashboard**.
+9. No seletor de período no topo, escolha **Last 15 minutes** (opcionalmente ative o auto-refresh na seta ao lado de **Refresh**).
+10. *(Opcional)* Expanda **Options** abaixo da query para inspecionar **Legend** (`Auto` já exibe o nome de cada produto automaticamente; usando **Custom**, você pode customizar com `{{produto}}`).
+
+![Editor do Painel 1 no modo Code com a query PromQL e o gráfico de pedidos por minuto](images/grafana-03-painel1-editor.png)
+
+11. No topo à direita, clique em **Back to dashboard**.
 
 > 💡 **O que é `$__rate_interval`?** É uma variável automática do Grafana calculada como `max(intervalo_do_passo, 4 × scrape_interval)`. Ela garante que a janela passada ao `rate()` sempre contenha amostras suficientes mesmo quando você dá zoom (5 minutos) ou afasta o gráfico (7 dias) — evitando buracos silenciosos que ocorrem ao fixar `[1m]` em gráficos longos.
 
 ### Segundo painel — Latência p95 de processamento por país
 
-Repita o procedimento criando um novo painel com o título `Latência p95 por País (segundos)`:
+De volta ao dashboard, clique no ícone **`+`** no topo do menu lateral direito (**Add**) e novamente em **Panel > `+`** para adicionar um segundo painel:
 
-- **Query:**
-  ```promql
-  histogram_quantile(0.95, sum by (le, pais) (rate(pedidos_processamento_duracao_segundos_bucket[$__rate_interval])))
-  ```
-- **Legend (Custom):** `{{pais}}`
-- Em **Standard options > Unit**, selecione **Time > seconds (s)**.
+1. No campo **Title**, escreva `Latência p95 por País (segundos)` e clique em **Configure visualization**.
+2. Alterne o editor de query para **Code**, cole a consulta abaixo e clique em **Run queries**:
+   ```promql
+   histogram_quantile(0.95, sum by (le, pais) (rate(pedidos_processamento_duracao_segundos_bucket[$__rate_interval])))
+   ```
+
+![Editor do Painel 2 exibindo as três faixas de latência p95 separadas por país](images/grafana-04-painel2-latencia.png)
+
+3. Clique em **Back to dashboard**, depois em **Save** no topo à direita (dê um nome como `Monitoramento de Pedidos - Prometheus`) e em **Exit edit** para visualizar o dashboard final:
+
+![Dashboard final salvo no Grafana 13 com os dois painéis lado a lado](images/grafana-05-dashboard-final.png)
 
 ### Sugestões de painéis adicionais
 
