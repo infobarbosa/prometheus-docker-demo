@@ -91,6 +91,18 @@ pedidos_estoque_atual{departamento="ELETRODOMESTICOS",produto="GELADEIRA"} 28
 | **Histogram** | Conta observações em faixas cumulativas (`_bucket`, `_sum`, `_count`) | `histogram_quantile()` | `pedidos_processamento_duracao_segundos` |
 | **Summary** | Quantis calculados no próprio cliente (não agregáveis entre instâncias) | consulta direta | — |
 
+#### Por que um `Counter` (odômetro) em vez de enviar cada pedido como `Gauge`?
+
+Uma dúvida natural — especialmente para quem vem de bancos SQL ou do laboratório de **InfluxDB 3** — é: *"por que não enviar cada pedido vendido ao Prometheus e deixar a query somar os valores na janela?"*
+
+Como a quantidade de cada pedido varia (`2`, `1`, `3`, `1`), esse valor precisaria ser modelado como **`gauge`** (pois um `counter` nunca pode diminuir). No modelo de **amostragem periódica (*Pull / scrape*)** do Prometheus, essa abordagem falha em três frentes:
+
+1. **Perda de eventos entre scrapes:** se ocorrerem 4 vendas de `GELADEIRA` no Brasil entre `t=0s` e `t=15s` (`2`, `1`, `3` e `1` unidades = **7 itens**), quando o Prometheus chegar em `t=15s` o `gauge` guardará apenas o último valor sobrescrito (`1`). As outras **6 unidades desaparecem silenciosamente**.
+2. **Duplicação na ausência de eventos:** se entre `t=15s` e `t=45s` não houver nenhuma venda nova, o `gauge` permanece em `1`. O Prometheus coletaria `1` em `t=15s`, `1` em `t=30s` e `1` em `t=45s`, somando **3 vendas onde houve apenas 1**.
+3. **Explosão de cardinalidade:** tentar evitar a sobrescrita colocando `id_do_pedido` como label cria uma série temporal nova para cada pedido no índice invertido em RAM e derruba o servidor.
+
+Com um **`counter` (analogia do odômetro)**, a aplicação acumula em memória (`100 → 102 → 103 → 106 → 107`). O Prometheus lê `100` em `t=0s` e `107` em `t=15s`, e `increase()` calcula a diferença (`107 - 100 = 7`): **zero perda** sob alto volume, **zero duplicação** quando não há vendas (`107 - 107 = 0`) e correção automática caso o processo reinicie (*counter reset*). Já o **`gauge`** fica reservado para **estados instantâneos que existem no momento da foto** — como `pedidos_estoque_atual`, temperatura ou uso de memória.
+
 ### Labels e Alta Cardinalidade — o conceito mais importante no Prometheus
 
 No Prometheus, **uma série temporal** é identificada unicamente pela combinação:
@@ -436,6 +448,27 @@ promtool query instant http://localhost:9090 'increase(pedidos_total{produto="NO
 ```
 
 > **Por que `increase()` retorna números decimais (ex.: `12.52`) mesmo em contadores inteiros?** O Prometheus extrapola ligeiramente as bordas da janela `[2m]` para compensar a diferença entre o instante exato da consulta e o instante dos scrapes (a cada 5s). É um comportamento normal e esperado em PromQL.
+
+#### Consultando um intervalo absoluto `[T1, T2]` — e quando NÃO usar Prometheus
+
+Se a pergunta for *"quantos itens de `NOTEBOOK` foram vendidos entre `T1` e `T2`?"*, o Prometheus responde avaliando `increase()` no instante final `T2` com janela de duração `D = T2 - T1` (via `--time` no `promtool` ou o modificador `@ <timestamp>` em PromQL):
+
+```bash
+T2=$(date -u +%s)
+promtool query instant --time="${T2}" http://localhost:9090 \
+  'sum by (produto) (increase(pedidos_itens_total{produto="NOTEBOOK"}[2m]))'
+```
+
+> ⚠️ **Atenção — estimativa operacional, não dado contábil:** o valor retornado é **aproximado**, pois sofre extrapolação de borda, não preserva a lista individual de pedidos (sem trilha de auditoria) e pode perder eventos ocorridos entre o último scrape e uma queda abrupta da aplicação.
+
+##### Telemetria em tempo real sob alta taxa de ingestão: Prometheus × Banco de Eventos
+
+O segredo arquitetural do Prometheus em cenários de **alta taxa de ingestão (*high ingestion rate*)** é que **o custo de rede e armazenamento escala com a cardinalidade (número de séries), e NÃO com o volume de eventos por segundo**. Se na Black Friday o sistema saltar de `10` para `100.000 pedidos/s`, a aplicação continua apenas incrementando o contador em RAM e o Prometheus continua fazendo exatamente **1 scrape** a cada intervalo — enquanto um banco de eventos precisa absorver **100.000 escritas por segundo**.
+
+| Pergunta / Necessidade | Ferramenta indicada | Por quê? |
+|---|---|---|
+| *"O ritmo de vendas caiu? A latência p95 estourou 500ms? O estoque está acabando?"* | **Prometheus** | Telemetria operacional em tempo real com custo previsível (`O(1)` por série mesmo sob picos extremos de vazão) |
+| *"Quantos itens exatos foram faturados entre 18h00 e 19h00? Quais os IDs dos pedidos do cliente X?"* | **InfluxDB 3 / ClickHouse / PostgreSQL** | Armazena cada evento individual com precisão exata, auditoria e filtros de alta cardinalidade (`id_do_pedido`, `cliente_id`) |
 
 ---
 
