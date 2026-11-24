@@ -168,11 +168,11 @@ Assim que o container `prometheus-lab` inicia, um serviço chamado **`pedidos-ex
 
 Em vez de empurrar cada pedido para o banco, o exporter mantém métricas agregadas em memória e as expõe no endpoint HTTP `http://127.0.0.1:9100/metrics`:
 
-- **`pedidos_total`** (`counter`) — total acumulado de pedidos por `produto`, `departamento` e `pais`.
-- **`pedidos_itens_total`** (`counter`) — total acumulado de itens vendidos.
-- **`pedidos_receita_reais_total`** (`counter`) — receita acumulada em reais.
-- **`pedidos_estoque_atual`** (`gauge`) — estoque atual por `produto` e `departamento` (diminui com vendas e sobe com reposições automáticas).
-- **`pedidos_processamento_duracao_segundos`** (`histogram`) — tempo de processamento por `pais` (com perfis de latência distintos entre `US`, `BR` e `AU`).
+- **`pedidos_total`** (`counter`) — métrica de **negócio**: total acumulado de pedidos por `produto`, `departamento` e `pais`.
+- **`pedidos_itens_total`** (`counter`) — métrica de **negócio**: total acumulado de itens vendidos.
+- **`pedidos_receita_reais_total`** (`counter`) — métrica de **negócio**: receita acumulada em reais.
+- **`pedidos_estoque_atual`** (`gauge`) — métrica de **negócio/operação**: estoque atual por `produto` e `departamento` (diminui com vendas e sobe com reposições automáticas).
+- **`pedidos_processamento_duracao_segundos`** (`histogram`) — métrica **técnica (desempenho/latência)**: tempo que o serviço leva para processar e confirmar cada pedido em cada país (`US`, `BR`, `AU`), simulando perfis distintos de infraestrutura/rede por região.
 
 Acompanhe o log do exporter:
 ```bash
@@ -527,13 +527,25 @@ Output esperado (note como `NOTEBOOK` e `COMPUTADOR` têm ticket médio bem maio
 
 #### Exemplo 16 — Latência p95 por país com Histogram (`histogram_quantile()`)
 
-Um histograma expõe buckets cumulativos (`_bucket` com o label `le` = *less than or equal*). A função `histogram_quantile(0.95, ...)` estima o 95º percentil de duração de processamento:
+Diferente das métricas anteriores (que acompanham **negócio**, como volume de vendas, receita e estoque), `pedidos_processamento_duracao_segundos` é uma **métrica técnica de desempenho**: mede quanto tempo o backend de checkout leva para processar e confirmar cada pedido.
+
+- **O que significa `p95` (95º percentil)?** Um `p95 = 0,42s` no Brasil indica que **95% dos pedidos** foram processados em até `0,42s`, enquanto os **5% mais lentos** (*tail latency*) passaram desse tempo. Em monitoramento, preferimos **percentis (`p95`/`p99`)** à **média** porque a média mascara picos de lentidão que prejudicam uma parcela real dos clientes.
+- **Qual valor extraímos e qual degradação monitoramos?** Quebrar a latência por `pais` permite validar **SLOs/SLAs regionais** (por exemplo: *"95% dos pedidos devem concluir em até 0,5s"*) e detectar **degradações isoladas** — como sobrecarga em um gateway de pagamento local, banco de dados regional lento ou latência de rede entre regiões — que ficariam escondidas em uma métrica global e acabariam gerando abandono de carrinho.
+
+Um histograma expõe buckets cumulativos (`_bucket` com o label `le` = *less than or equal*). A função `histogram_quantile(0.95, ...)` estima o 95º percentil a partir desses buckets:
 
 > **Importante:** ao agregar buckets de um histograma, **mantenha sempre `le` dentro do `by (...)`**!
 
 ```bash
 promtool query instant http://localhost:9090 \
   'histogram_quantile(0.95, sum by (le, pais) (rate(pedidos_processamento_duracao_segundos_bucket[5m])))'
+```
+
+Output esperado (observe `US` e `BR` saudáveis abaixo de `0,5s`, enquanto `AU` sinaliza degradação acima de `1s`):
+```text
+{pais="AU"} => 1.835 @[...]
+{pais="BR"} => 0.424 @[...]
+{pais="US"} => 0.159 @[...]
 ```
 
 ---
@@ -821,6 +833,8 @@ Para confirmar, acesse **Connections > Data sources > Prometheus**, role até o 
 
 ### Segundo painel — Latência p95 de processamento por país
 
+Enquanto o primeiro painel acompanha o **volume de negócio** (pedidos por minuto), este segundo painel monitora a **saúde técnica do processamento** — permitindo enxergar rapidamente se alguma região está sofrendo lentidão (degradação de checkout, gateway de pagamento ou rede) mesmo quando os pedidos continuam chegando.
+
 De volta ao dashboard, clique no ícone **`+`** no topo do menu lateral direito (**Add**) e novamente em **Panel > `+`** para adicionar um segundo painel:
 
 1. No campo **Title**, escreva `Latência p95 por País (segundos)` e clique em **Configure visualization**.
@@ -834,6 +848,8 @@ De volta ao dashboard, clique no ícone **`+`** no topo do menu lateral direito 
 3. Clique em **Back to dashboard**, depois em **Save** no topo à direita (dê um nome como `Monitoramento de Pedidos - Prometheus`) e em **Exit edit** para visualizar o dashboard final:
 
 ![Dashboard final salvo no Grafana 13 com os dois painéis lado a lado](images/grafana-05-dashboard-final.png)
+
+> 🔎 **Como ler o dashboard:** os dois painéis se complementam. À esquerda, o ritmo de vendas permanece estável; à direita, o p95 revela imediatamente que **`US` (~0,2s)** e **`BR` (~0,4s)** operam dentro de um SLO típico de `< 0,5s`, enquanto **`AU` (~1,0–2,0s)** apresenta degradação clara de tempo de resposta — exatamente o tipo de sinal que em produção dispararia um alerta no **Alertmanager** antes que a lentidão provoque perda de vendas.
 
 ### Sugestões de painéis adicionais
 
