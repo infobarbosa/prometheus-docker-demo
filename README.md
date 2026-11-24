@@ -21,11 +21,18 @@ Duas escolhas arquiteturais definem o Prometheus:
    - **Blocos imutáveis em disco:** periodicamente o *Head Block* é compactado em diretórios imutáveis (`01.../`), contendo os `chunks/` (séries comprimidas), o `index` (índice invertido de labels → séries) e o `meta.json`.
    - **Compressão Gorilla / XOR:** inspirada no paper *Gorilla* (Facebook/Meta), usa *delta-of-delta* para timestamps e compressão XOR bit a bit para valores `float64` — reduzindo cada amostra a poucos **bytes** em disco, como veremos na [Seção 9](#9-por-dentro-do-armazenamento-tsdb-wal-e-compressão-gorilla-hands-on).
 
-```text
-[pedidos-exporter :9100/metrics] <--- scrape Pull (5s) --- [Prometheus :9090 (TSDB)] ---> [Grafana :3000]
-                                                                     ^
-[Batch job / curl] --- push (HTTP POST) ---> [Pushgateway :9091] ----+
-```
+### Topologia esperada em produção (quem é quem e fluxo Pull × Push)
+
+Antes de subir o ambiente de aula, vale visualizar **em qual servidor cada componente roda em produção** e **como a informação trafega** — em especial, o que é **puxado (*Pull*)** e o que é **empurrado (*Push*)**:
+
+![Topologia de produção do Prometheus: servidores, fluxo Pull vs Push e comparação com o laboratório](images/arquitetura-producao.png)
+
+Resumindo o fluxo informacional da esquerda para a direita:
+- **Puxado (*Pull* — `HTTP GET /metrics`, setas azuis):** é o padrão do Prometheus. As aplicações e exporters (`pedidos-exporter`, `node_exporter`, `postgres_exporter`) ficam **passivos** em seus próprios servidores apenas expondo `/metrics`; é o **servidor Prometheus** quem inicia a conexão periodicamente e puxa os dados.
+- **Empurrado (*Push* — `HTTP POST`, setas laranjas):** é a **exceção**, usada em dois casos pontuais: (1) **jobs batch efêmeros** empurram suas métricas para o **Pushgateway** antes de encerrar — e o Prometheus continua **puxando** do Pushgateway logo depois; (2) quando uma regra de alerta dispara (ex.: `p95 > 0,5s`), o Prometheus empurra o alerta para o **Alertmanager**.
+- **Consultado sob demanda (setas roxas):** o **Grafana** roda em servidor separado, **não armazena métricas** e apenas envia consultas **PromQL** para a HTTP API do Prometheus (`:9090`) para desenhar os painéis.
+
+> **Em produção × Neste laboratório:** em produção cada bloco roda em máquinas ou pods independentes. Para simplificar a aula, a imagem `prometheus-lab` reúne `pedidos-exporter`, `Pushgateway`, `Prometheus` e `code-server` em um único container, conversando pela rede Docker `lab-net` com o container separado do **Grafana**.
 
 > **Quando usar o Pushgateway?** O modelo padrão do Prometheus é **Pull**. O **Pushgateway** existe apenas para **jobs efêmeros ou em lote (*batch*)** que terminam rápido demais para serem raspados diretamente — ele **não** deve ser usado como coletor contínuo de eventos. Neste laboratório usaremos o modelo **Pull** para o fluxo contínuo de pedidos e o **Pushgateway** para simular um job de fechamento manual ([Seção 5](#5-enviando-métricas-manualmente-com-pushgateway)).
 
