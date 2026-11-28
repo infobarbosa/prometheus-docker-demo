@@ -2,7 +2,7 @@ services:
   # code-server + Prometheus + Pushgateway + pedidos-exporter
   prometheus-lab:
     container_name: prometheus-lab
-    image: ghcr.io/infobarbosa/prometheus-lab-docker-image:latest
+    image: ghcr.io/labzinho/prometheus-lab-docker-image:latest
     ports:
       - "8080:8080"
       - "9090:9090"
