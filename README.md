@@ -38,7 +38,7 @@ Resumindo o fluxo informacional da esquerda para a direita:
 
 ### Prometheus × InfluxDB 3 (quando usar cada um)
 
-Se você também cursou o laboratório de [InfluxDB 3](https://github.com/infobarbosa/influxdb-timeseries-demo), vale contrastar o propósito de cada ferramenta:
+Se você também cursou o laboratório de [InfluxDB 3](https://github.com/labzinho/influxdb-timeseries-demo), vale contrastar o propósito de cada ferramenta:
 
 | Dimensão | **Prometheus** | **InfluxDB 3** |
 |---|---|---|
@@ -142,7 +142,7 @@ Todos os comandos do tutorial são executados no terminal do code-server.
 #### Passo 2: Executar o script de provisionamento
 No terminal do CloudShell, execute:
 ```bash
-curl -sS https://raw.githubusercontent.com/infobarbosa/prometheus-docker-demo/main/launch-lab.sh | bash
+curl -sS https://raw.githubusercontent.com/labzinho/prometheus-docker-demo/main/launch-lab.sh | bash
 ```
 
 O script realizará de forma automatizada:
@@ -940,7 +940,7 @@ Fora do horário de aula, é possível executar o mesmo ambiente em qualquer má
 Faça o clone deste repositório e inicialize os containers com o `compose.yaml` disponível na raiz do projeto:
 
 ```bash
-git clone https://github.com/infobarbosa/prometheus-docker-demo.git
+git clone https://github.com/labzinho/prometheus-docker-demo.git
 cd prometheus-docker-demo
 docker compose up -d
 ```
